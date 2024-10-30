@@ -1,0 +1,397 @@
+---
+title: "Fig1ACD"
+always_allow_html: yes
+output:
+  pdf_document:
+    includes:
+      in_header: "../library/header.tex"
+    keep_tex: yes
+    extra_dependencies: "subfig"
+    latex_engine: xelatex
+knit: (function(inputFile, encoding) {
+      out_dir <- "reports";
+      rmarkdown::render(inputFile,
+                        encoding=encoding,
+                        output_dir=file.path(dirname(inputFile), out_dir))})
+---
+
+```{r header,echo=FALSE,results='hide',warning = FALSE,message = FALSE}
+knitr::opts_chunk$set(
+  warning = FALSE, # show warnings during codeNbook generation
+  message = FALSE, # show messages during codebook generation
+  error = TRUE, # do not interrupt codebook generation in case of errors,
+                # usually better for debugging
+  echo = FALSE,  # show R code
+  paged.print=FALSE,
+  fig.pos = 'H', 
+ out.width = "100%"
+)
+library(showtext)
+showtext_auto()
+box::use(../library/utils[...])
+```
+
+```{r}
+box::use(ggplot2[...])
+box::use(haven[...])
+box::use(rms[...])
+box::use(tidyr[...])
+box::use(dplyr[...])
+box::use(stringr[...])
+box::use(psych[...])
+box::use(reshape2[...])
+box::use(kableExtra[...])
+box::use(ggsci[...])
+box::use(segmented[...])
+box::use(labelled[...])
+```
+```{r}
+showtext_auto(enable = TRUE)
+font_add("yahei", regular = "/extra/Fonts/msyh.ttc")
+font_add("yahei-bold", regular = "/extra/Fonts/msyhbd.ttc")
+showtext_opts(dpi = 600)
+```
+
+
+## Fig 1A
+
+```{r}
+transform_data <- function(data){
+  data %>%  
+    drop_na(Value, Age, AgeFactor) %>% 
+    group_by(Age,Gender,Value) %>% 
+    #    summarise(n = n(),.groups = "drop")
+    mutate(n=n())
+}
+plot_LineScatter <- function(sample, xlab="",ylab="",legend.title,sd_coef=1,all=F,color_values = c("#3B4992", "#EE0000", "#008B45", 
+                                  "#631879", "#008280", "#BB0021", 
+                                  "#5F559B", "#A20056", 
+                                  "#C4493A", "#90B07A", "#768BA0",
+                                  "#D39394", "#71838F", "#E5CC96",
+                                  "#ECD98B", "#03875C", "#0000FF", 
+                                  "#077ABD", "#B7AACB", "#9A4C43", 
+                                  "#F20D0D", "#B7E0FF", "#AAAAC2")){
+  
+  
+  sample_scatter <- transform_data(sample)
+  alpha <- (unique(sample_scatter$n) / sum(unique(sample_scatter$n)))
+  n0 <- unique(sample_scatter$n)
+  alpha <- alpha / max(alpha)
+  alpha <- 1 : nrow(sample_scatter) %>% purrr::map(function(x) alpha[which(sample_scatter$n[x]==n0)]) %>% as.numeric()
+  
+  size=2
+  levels(sample_scatter$Gender) <- c("Male","Female")
+  #拟合曲线数据
+  # data_all <- fit.all.smoothdata(sample,"Value")
+  # sample_use <- sample %>% select(Gender,Age,Value)%>%drop_na()
+  # sd_all <- sample_use%>% group_by(Gender)%>%summarise(sd=sd(Value,na.rm=T),.groups = "drop")%>% pull(sd) %>% na.omit()
+  # data_m <- data_all$p_male %>% mutate(Gender="男") %>% mutate(sd = sd_all[1])
+  # data_f <- data_all$p_female %>% mutate(Gender="女") %>% mutate(sd = sd_all[2])
+  # 
+  # sample_line <- bind_rows(data_m,data_f) %>% mutate(Gender=factor(Gender,levels=c("男","女")),
+  #                                                    yusd = fit+sd_coef*sd,
+  #                                                    ylsd = fit-sd_coef*sd)
+  # 
+  # sample_all <- left_join(sample_scatter,sample_line,by=c("Age","Gender"))
+  
+  ggplot(sample_scatter, aes(x = Age, y = Value, color = score.D)) + 
+    geom_point(alpha = alpha, 
+               size = size,
+               position = position_dodge(0.9))+ 
+    scale_color_manual(values=color_values,labels=c("Significant loss","Moderate loss","Sufficient","High"))+
+    scale_x_continuous(n.breaks = 7)+
+    # geom_line(aes(x=Age, y=fit),color="red") + 
+    # geom_line(aes(x=Age, y=yusd),color="blue") + 
+    # geom_line(aes(x=Age, y=ylsd),color="blue") +
+    # geom_vline(xintercept = 40, color="#6A6A6A",size=0.33,linetype=1) + 
+    # geom_vline(xintercept = 60, color="#6A6A6A",size=0.4,linetype=1) +
+    # geom_vline(xintercept = 80, color="#6A6A6A",size=0.33,linetype=1) +
+#    geom_ribbon(aes(x=Age, y = fit,ymin = lwr, ymax = upr),fill="red",alpha = 0.3)+
+    # geom_hline(yintercept = 27,color="red") + 
+    # geom_hline(yintercept = 40,color="red") +
+    # geom_hline(yintercept = med,color="blue") +
+    # geom_hline(yintercept = 80,color="red") +
+    theme_light() + 
+    theme(panel.grid = element_blank( ),
+          legend.position = "bottom",
+          legend.title = element_blank(),
+          axis.title = element_text(size=12),
+          axis.text = element_text(size=12),
+          strip.text = element_text(size=12),
+          legend.text = element_text(size=12)) + 
+    # scale_color_manual(values = color_values) + 
+    facet_wrap(~Gender)+
+    labs(x = xlab, y = ylab,color=legend.title)+
+    guides(color=guide_legend(reverse = T,label.position = "left"))
+}
+
+datalist$updatesample(datalist$BJ_data,"score")
+p1 <- plot_LineScatter(datalist$sample,xlab="Age", ylab = "Intrinsic capacity score",legend.title = "Intrinsic capacity")
+# ggexport(p1, filename = "Fig1A.jpg", width = 17, height = 10, units = "cm", res = 600)
+ggsave(plot=p1, filename = "Fig1A.pdf", width = 17, height = 10, units = "cm", dpi = 600)
+```
+
+
+```{r}
+rcs_value = function(variable, data, gender){
+  sample = data %>% filter(A2 == gender) %>% dplyr::select(A4, all_of(variable)) %>% na.omit() 
+  
+  fit.all.in.smoothdata<-function(data,variable){
+    nknot_vec <- c(50,60,70,80)
+    #nknot <- 4
+    fit <- lm(as.formula(paste("`",variable,"`","~rcs(A4,nknot_vec)",sep = "")),data = data)
+    return(data.frame(A4 = data$A4, predict(fit, interval = "confidence")))
+  }
+  
+  outcome <- fit.all.in.smoothdata(sample, variable) %>% distinct(A4,.keep_all = TRUE) %>% arrange(A4)
+  return(data.frame(A4 = outcome$A4, avg_value = outcome$fit))
+}
+
+avg_value = function(variable, data, gender){
+  sample = data %>% filter(A2 == gender) %>% dplyr::select(A4, variable) %>% na.omit() %>%
+    group_by(A4) %>% summarise(avg_value = mean(get(variable)))
+  sample$avg_value = as.double(sample$avg_value)
+  return(sample)
+}
+
+seg_cpdetect_n = function(variable, data, gender, n, type = 's'){
+  if(type == 's'){
+    sample = rcs_value(variable, data, gender)
+  }else{
+    sample = avg_value(variable, data, gender)  # type = 'o'
+  }
+  
+  out.lm = glm(avg_value ~ A4, data = sample)
+  o = segmented(out.lm, npsi = n) 
+  sample$avg_value = o$fitted.values
+  res <- predict(o,se.fit=T)
+  sample$lwr = res$fit-20*res$se.fit
+  sample$upr = res$fit+20*res$se.fit
+  o_sum <- summary(o)
+  o_sum.coef <- o_sum$coefficients
+  o_se <- o_sum.coef[c(2,3),2]
+  
+  psi = rep(0, n)
+  slp = rep(0, n + 1)
+  signif = rep('***', n)
+  a = round(o$psi[,2],0)
+  b = round(o$coefficients[2:(n + 2)],4)
+  for(i in 1:n){
+    psi[i] = a[i]
+    slp[i] = b[i]
+    # todo: 边缘位置处理
+    # abs_v = abs(sample[psi[i] + 5 - 24, 2] - if_else(psi[i] -5 > 89, sample[65, 2], sample[psi[i] - 5 - 24, 2]))
+    # abs_v = abs(sample[psi[i] + 5 - 24, 2] - sample[psi[i] - 5 - 24, 2])
+    # var_v = var(sample[(psi[i] - 5 - 24):(psi[i] - 1 - 24), 2], na.rm = T) + var(sample[(psi[i] + 1 - 24):(psi[i] + 5 - 24), 2], na.rm = T)
+    #if(abs_v < var_v){signif[i] = ''}
+  }
+  slp[n + 1] = b[n + 1]
+  psi = data.frame(psi = psi, value = sample[psi - 24, 2])
+  return(list(sample = sample, psi = psi, slp = slp, signif = signif,se=o_se))
+}
+
+plot_cpd_data = function(sample, variable, xlab = "年龄", ylab = "记忆总得分"){
+  sample_m <- sample$male$sample %>% mutate(Gender="Male")
+  sample_f <- sample$female$sample %>% mutate(Gender="Female")
+  sample_all <- rbind(sample_m,sample_f)
+  sample_all$Gender = factor(sample_all$Gender,levels=c("Male","Female"))
+  p = ggplot(sample_all, aes(x=A4,y=avg_value,group=Gender)) + 
+    geom_line(aes(color=Gender),size = 0.8) +
+    scale_color_manual(values = c("#3B4992","#EE0000"))+
+#    geom_line(data = sample$female$sample, aes(A4, avg_value), color = "#EE0000", size = 0.8) + 
+    labs(x = xlab, y = ylab) + 
+    theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()) +
+    theme_bw() + 
+    theme(panel.grid = element_blank()) +
+    theme(legend.title = element_blank(),
+          panel.border = element_blank(),
+          panel.background = element_blank(),
+          axis.line = element_line(color="black"),
+          axis.text = element_text(size=12),
+          axis.title = element_text(size=12),
+          legend.text = element_text(size=12))+
+    geom_vline(xintercept = sample$male$psi$psi, size = 0.3, linetype = 'dashed', color = "#3B4992") + 
+    geom_vline(xintercept = sample$female$psi$psi, size = 0.3, linetype = 'dashed', color = "#EE0000") +
+    ylim(0,100)+
+    scale_x_continuous(breaks=seq(20,90,10))+
+#    geom_text() + 
+    #annotate("text", label = paste(sample$male$psi$psi, sample$male$signif), x = sample$male$psi$psi, y = sample$male$psi$value, size = 3, color = "#3B4992") +
+    #annotate("text", label = paste(sample$female$psi$psi, sample$female$signif), x = sample$female$psi$psi, y = sample$female$psi$value, size = 2, color = "#EE0000") +
+    annotate("text", label = sample$male$psi$psi, x = sample$male$psi$psi, y = 0, size = 4, color = "#3B4992") +
+    annotate("text", label = sample$female$psi$psi, x = sample$female$psi$psi, y = 2, size = 4, color = "#EE0000") +
+    annotate("text", label = sample$male$slp[1], x = 40, y = 75, size = 4, colour = "#3B4992") +
+    annotate("text", label = sample$male$slp[2], x = 75, y = 50, size = 4, colour = "#3B4992") +
+    annotate("text", label = sample$female$slp[1], x = 40, y = 63, size = 4, colour = "#EE0000") +
+    annotate("text", label = sample$female$slp[2], x = 75, y = 37, size = 4, colour = "#EE0000")+
+    guides(color=guide_legend(title="Gender"))+
+    theme(legend.position = c(0.85,0.85))+
+    theme(axis.line.x.top = element_blank(),
+          axis.line.y.right = element_blank())
+  return(p)
+}
+
+plot_cp = function(variable, input_data, n1, n2, xlab = "年龄", ylab = "记忆总得分"){
+
+  data = input_data %>% select(A2, A4, A4_F_0, variable) %>% filter(A4 >= 25, A4 <= 89)
+  
+  # original data + segmented
+  sample4_1 = seg_cpdetect_n(variable, data, "男", n1, type = 'o')
+  sample4_2 = seg_cpdetect_n(variable, data, "女", n2, type = 'o')
+  sample4 = list(male = sample4_1, female = sample4_2)
+  p4 = plot_cpd_data(sample4, variable, xlab, ylab)
+  
+  # # smoothing data + segmented
+  # sample6_1 = seg_cpdetect_n(variable, data, 1, n1, type = 's')
+  # sample6_2 = seg_cpdetect_n(variable, data, 2, n2, type = 's')
+  # sample6 = list(male = sample6_1, female = sample6_2)
+  # p6 = plot_cpd_data(sample6, variable, xlab, ylab)
+  # 
+  # # p = ggarrange(p4, p6, nrow = 2, ncol = 1)
+  return(p4)
+  
+}
+```
+
+## Fig 1C
+
+```{r}
+fit.all.in.smoothdata<-function(data,index){
+  nknot_vec <- c(50,60,70,80)
+  fit_temp<-lm(as.formula(paste("`",index,"`","~rcs(Age,nknot_vec)",sep = "")),data = data)
+  return(data.frame(Age = data$Age,predict(fit_temp,interval = "confidence")))
+}
+fit.all.smoothdata<-function(data,index){
+  data <- data %>% filter(!is.na(Age) & !is.na(Value)) %>% filter(Age >= 25 & Age <= 89)
+  
+  Male <- which(data$Gender == "男")
+  Female <- which(data$Gender == "女")
+  
+  n_male <- length(Male)
+  n_female <- length(Female)
+  
+  p_male <- fit.all.in.smoothdata(data[Male,],index) %>% distinct(Age,.keep_all = TRUE) %>% arrange(Age)
+  
+  p_female <- fit.all.in.smoothdata(data[Female,],index)%>% distinct(Age,.keep_all = TRUE) %>% arrange(Age)
+  
+  return(list(p_male = p_male,p_female = p_female))
+}
+
+plot_all <- function(sample,data,index,variable,xlab,ylab){
+  data_all <- fit.all.smoothdata(sample,index)
+  data_male <- data_all$p_male
+  data_female <- data_all$p_female
+  
+  data_male <- data_male %>% mutate(lwr = (lwr-fit)*sqrt(n())/1.96+fit,
+                                    upr = (upr-fit)*sqrt(n())/1.96+fit)
+  
+  data_female <- data_female %>% mutate(lwr = (lwr-fit)*sqrt(n())/1.96+fit,
+                                        upr = (upr-fit)*sqrt(n())/1.96+fit)
+  
+  sample4_1 = seg_cpdetect_n(variable, data, "男", 1, type = 'o')
+  sample4_2 = seg_cpdetect_n(variable, data, "女", 1, type = 'o')
+  sample4 = list(male = sample4_1, female = sample4_2)
+  
+  colnames(data_male)<- c("A4","fit","lwr1","upr1")
+  colnames(data_female)<- c("A4","fit","lwr1","upr1")
+  sample_all_male <- left_join(data_male,sample4$male$sample,by="A4")
+  sample_all_female <- left_join(data_female,sample4$female$sample,by="A4")
+  sample_all <- bind_rows(sample_all_male%>% mutate(Gender="Male"),
+                          sample_all_female%>%mutate(Gender="Female"))
+  sample_all$Gender <- factor(sample_all$Gender,levels = c("Male","Female"))
+  ggplot(sample_all)+
+    geom_ribbon(aes(x = A4,y = fit,ymin = lwr1, ymax = upr1,fill=Gender), alpha = 0.3) +
+    geom_line(aes(A4, y=avg_value,color=Gender), size = 0.8) +
+    labs(x = xlab, y = ylab) +
+    guides(fill="none")+
+    theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()) +
+    theme_bw() +
+    theme(panel.grid = element_blank(),
+          legend.position = c(0.85,0.85),
+          legend.title = element_blank(),
+          panel.border = element_blank(),
+          panel.background = element_blank(),
+          axis.line = element_line(color="black"),
+          axis.text = element_text(size=12),
+          axis.title = element_text(size=12),
+          legend.text = element_text(size=12)) +
+    scale_color_manual(values = c("#3B4992","#EE0000"))+
+    scale_fill_manual(values = c("#3B4992","#EE0000"))+
+    scale_x_continuous(breaks=seq(20,90,10))+
+    geom_vline(aes(xintercept = sample4$male$psi$psi), size = 0.3, linetype = 'dashed', color = "#3B4992") +
+    geom_vline(aes(xintercept = sample4$female$psi$psi), size = 0.3, linetype = 'dashed', color = "#EE0000") +
+    ylim(0,100)+
+    #annotate("text", label = paste(sample$male$psi$psi, sample$male$signif), x = sample$male$psi$psi, y = sample$male$psi$value, size = 3, color = "#3B4992") +
+    #annotate("text", label = paste(sample$female$psi$psi, sample$female$signif), x = sample$female$psi$psi, y = sample$female$psi$value, size = 2, color = "#EE0000") +
+    annotate("text", label = sample4$male$psi$psi, x = sample4$male$psi$psi, y = 0, size = 4, color = "#3B4992") +
+    annotate("text", label = sample4$female$psi$psi, x = sample4$female$psi$psi, y = 2, size = 4, color = "#EE0000") +
+    annotate("text", label = sample4$male$slp[1], x = 40, y = 75, size = 4, colour = "#3B4992") +
+    annotate("text", label = sample4$male$slp[2], x = 75, y = 55, size = 4, colour = "#3B4992") +
+    annotate("text", label = sample4$female$slp[1], x = 40, y = 63, size = 4, colour = "#EE0000") +
+    annotate("text", label = sample4$female$slp[2], x = 75, y = 37, size = 4, colour = "#EE0000") 
+  
+}
+
+```
+
+```{r}
+datalist$updatesample(datalist$BJ_data,"score")
+
+p1C <- plot_all(datalist$sample,datalist$scoredata,"Value","score","Age","Intrinsic capacity score(SD)")
+
+# ggexport(p1C, filename = "Fig1C.jpg", width = 17, height = 10, units = "cm", res = 600)
+ggsave(plot=p1C, filename = "Fig1C.pdf", width = 17, height = 10, units = "cm", dpi = 600)
+```
+
+
+## Fig 1D
+
+```{r}
+score_plot <- function(data_use,xlab,ylab,legend.title,text.size){
+  
+  data_plot <- data_use%>% ungroup %>%
+    select(A2,A4,all_of(c("J1_score","C4_score","K2.2_score","K7.A.1_score","psy_score"))) %>%filter(A4>=50)%>%drop_na()
+  
+  data_plot <- data_plot  %>% mutate(across(all_of(c("J1_score","C4_score","K2.2_score","K7.A.1_score","psy_score")), function(x){100*x/max(x,na.rm=T)}))
+  Ccol <- c("Cognition","Sensory","Vitality","Locomotion","Psychology")
+  
+  data_plot <- data_plot %>% mutate(A2 = labelled::unlabelled(A2))
+  colnames(data_plot) <- c("A2","A4",Ccol)
+  data_lpot <- melt(data_plot, id.vars = c("A4","A2"),measure.vars = Ccol,value.name = "score")
+  
+  ggplot(data_lpot,aes(x=A4,y=score,group=variable))+
+    geom_smooth(aes(color=variable,fill=variable))+
+    scale_color_simpsons()+
+    scale_fill_simpsons()+
+    ylim(c(0,100))+
+#    facet_wrap(~A2)+
+    theme_bw() + 
+    labs(x = xlab, y = paste(ylab, "(", "95%CI", ")", sep = ""), color = legend.title)+
+    guides(fill="none") + 
+    theme(legend.key = element_blank(),
+          legend.title = element_blank(),
+          legend.position=c(0.5,0.92),
+          legend.key.size = unit(0.6,"cm"),
+          axis.text = element_text(size=12),
+          axis.title = element_text(size=12),
+#          legend.text = element_text(size=12),
+          legend.text = element_text(size=text.size),
+          legend.direction = "horizontal",
+          axis.line = element_line(colour = "black"),
+          panel.grid.major = element_blank(),
+          panel.grid.minor = element_blank(),
+          panel.border = element_blank(),
+          panel.background = element_blank())
+  
+}
+```
+
+```{r,fig.width=6,fig.align='center'}
+p3 <- score_plot(datalist$scoredata, "Age","Relative sub-domain score","Sub-domain",text.size = 10)
+
+# ggexport(p3, filename = "Fig1D.jpg", width = 17, height = 10, units = "cm", res = 600)
+ggsave(plot=p3, filename = "Fig1D.pdf", width = 17, height = 10, units = "cm", dpi = 600)
+```
+
+
+
+

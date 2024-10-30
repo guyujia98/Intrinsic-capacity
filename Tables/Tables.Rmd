@@ -1,0 +1,422 @@
+---
+title: "综合得分整理20231225"
+always_allow_html: yes
+output:
+  pdf_document:
+    includes:
+      in_header: "../library/header.tex"
+    keep_tex: yes
+    extra_dependencies: "subfig"
+    latex_engine: xelatex
+knit: (function(inputFile, encoding) {
+      out_dir <- "reports";
+      rmarkdown::render(inputFile,
+                        encoding=encoding,
+                        output_dir=file.path(dirname(inputFile), out_dir))})
+---
+
+```{r header,echo=FALSE,results='hide',warning = FALSE,message = FALSE}
+knitr::opts_chunk$set(
+  warning = FALSE, # show warnings during codeNbook generation
+  message = FALSE, # show messages during codebook generation
+  error = TRUE, # do not interrupt codebook generation in case of errors,
+                # usually better for debugging
+  echo = FALSE,  # show R code
+  paged.print=FALSE,
+  fig.pos = 'H', 
+ out.width = "100%"
+)
+library(showtext)
+showtext_auto()
+box::use(../library/utils[...])
+#顾宇嘉
+```
+
+```{r}
+box::use(ggplot2[...])
+box::use(haven[...])
+box::use(rms[...])
+box::use(tidyr[...])
+box::use(dplyr[...])
+box::use(stringr[...])
+box::use(psych[...])
+box::use(reshape2[...])
+box::use(kableExtra[...])
+box::use(ggsci[...])
+box::use(segmented[...])
+box::use(labelled[...])
+
+AddCov <- function(){
+  datalist$sample <- left_join(datalist$sample,datalist$habitdata%>%select(ID,D11_D),by="ID")
+  datalist$sample$D11_D <- to_factor(datalist$sample$D11_D)
+}
+```
+
+## function
+
+```{r}
+summary_table <- function(data,group,variable,cont=T){
+  
+  datalist$updatesample(datalist$BJ_data,variable)
+  if(variable == "H1"){
+datalist$updatesample(datalist$BJ_data,"H1",relabel = c("城市","城市","农村","农村","农村","其他"))
+  } else if(variable == "ADL.D" |variable == "IADL.D" ){
+    datalist$sample <- datalist$sample %>% filter(Age>=50)
+  } else if(variable == "F3"){
+    datalist$sample$Value <- case_when(
+  (datalist$sample$Value=="非常宽裕" | datalist$sample$Value=="比较宽裕") ~ "宽裕",
+  (datalist$sample$Value=="比较困难" | datalist$sample$Value=="非常困难") ~ "困难",
+  (datalist$sample$Value=="基本够用") ~ "基本够用")
+    datalist$sample$Value = as.factor(datalist$sample$Value)
+  }
+  if(cont==F){
+    if(group == "score.D"){
+    
+  data_use2 <- datalist$sample %>% drop_na(score,Age,Value)
+#data_use2 <- data
+  data_use2 <- data_use2%>% mutate(A4_F=Age)%>%cut_by_list("A4_F", seq(50,90,10), 25, 90)%>%
+  mutate(AgeFactor=A4_F) %>% select(-A4_F)
+  a <- data_use2 %>%select(score.D,Value)%>% group_by(score.D)%>%mutate(n.all=n()) %>%
+  group_by(score.D,Value)%>%mutate(n=n()) %>% unique
+  a <- a %>% mutate(percentage = paste0("(",n,"/",n.all,")",100*round(n/n.all,3),"%")) %>%
+  arrange(desc(score.D),Value) 
+  b <- a %>%select(score.D,percentage)%>% pivot_wider(names_from = "score.D",values_from = percentage)
+  b
+    } else if(group=="AgeFactor"){
+  data_use2 <- datalist$sample %>% drop_na(score,Age)
+#data_use2 <- data
+data_use2 <- data_use2%>% mutate(A4_F=Age)%>%cut_by_list("A4_F", seq(50,90,10), 25, 90)%>%
+  mutate(AgeFactor=A4_F) %>% select(-A4_F)
+a <- data_use2 %>%select(AgeFactor,Value)%>% group_by(AgeFactor)%>%mutate(n.all=n()) %>%
+  group_by(AgeFactor,Value)%>%mutate(n=n()) %>% unique
+a <- a %>% mutate(percentage = paste0("(",n,"/",n.all,")",100*round(n/n.all,3),"%")) %>%
+  arrange(AgeFactor,Value)
+b <- a %>%select(AgeFactor,percentage)%>% pivot_wider(names_from = "AgeFactor",values_from = percentage)
+b
+    }
+  } else if(cont==T){
+    if(group == "score.D"){
+   data_use2 <- datalist$sample %>% drop_na(score,Age,Value)
+    a <- data_use2 %>%select(score.D,Value)%>%   group_by(score.D)%>%mutate(mean=round(mean(Value,na.rm=T),1),sd = round(sd(Value,na.rm=T),1), 
+                                                                      type = datalist$detail[2])
+  a <- a %>% mutate(percentage = paste0(mean,"[",sd,"]")) %>%   select(score.D,percentage,type)%>%unique %>% arrange(desc(score.D))
+  b <- a %>% pivot_wider(names_from = "score.D",values_from = percentage)
+  b
+    } else if(group == "AgeFactor"){
+      data_use2 <- datalist$sample %>% drop_na(Age,score,Value) %>% select(Age,Value)
+#data_use2 <- data
+data_use2 <- data_use2%>% mutate(A4_F=Age)%>%cut_by_list("A4_F", seq(50,90,10), 25, 90)%>%
+  mutate(AgeFactor=A4_F) %>% select(-A4_F) %>% drop_na
+a <- data_use2 %>%select(AgeFactor,Value)%>%   group_by(AgeFactor)%>%mutate(mean=round(mean(as.numeric(Value),na.rm=T),1),sd = round(sd(as.numeric(Value),na.rm=T),1), 
+                                                                      type = datalist$detail[2])
+  a <- a %>% mutate(percentage = paste0(mean,"[",sd,"]")) %>%   select(AgeFactor,percentage,type)%>%unique %>% arrange(AgeFactor)
+  b <- a %>% pivot_wider(names_from = "AgeFactor",values_from = percentage)
+  if(variable == "J1"){b[1,2]=NA}
+  b
+}
+  }
+}
+```
+
+
+
+## Table 1
+
+
+### Discrete
+```{r}
+variable = c("A5_new","H1","C4","A2")
+res <- lapply(variable, function(x){summary_table(datalist$BJ_data,"AgeFactor",x,cont=F)})
+res
+```
+
+### Continuous
+
+```{r}
+variable <- c("J1","K2.2","K7.A.1","K6.2","B1","C1","E6_DS","E6_AS","E6_SS")
+res <- lapply(variable, function(x){summary_table(datalist$BJ_data,"AgeFactor",x,cont=T)})
+res
+```
+
+
+## Table 2
+
+```{r}
+print_percent <- function(data){
+  data_prop <- data %>% select(A2,AgeFactor,score.D) %>%drop_na
+
+data_prop <- data_prop %>% mutate(score.D = labelled::unlabelled(score.D))
+
+score <- data_prop %>% group_by(A2,AgeFactor)%>% mutate(n.GA = n())
+
+data_score <- score %>% group_by(A2,AgeFactor,score.D) %>% summarise(n=n(),prop=n/n.GA) %>%unique
+
+
+data_score <- data_score %>% ungroup %>% mutate(Gender = labelled::unlabelled(A2)) %>%select(-A2)
+
+data_score$Gender <- ifelse(data_score$Gender=="男","Male","Female")
+
+data_score_OA <- data_prop %>% group_by(AgeFactor)%>% mutate(n.GA = n()) %>% ungroup
+data_score_OA <- data_score_OA%>%group_by(AgeFactor,score.D) %>% summarise(n=n(),prop=n/n.GA) %>%unique %>% 
+  mutate(Gender="All")
+
+data_score <- bind_rows(data_score,data_score_OA)
+
+data_score <- data_score %>% mutate(Gender = factor(Gender,levels = c("Male","Female","All")))
+data_score$score.D <- case_when(data_score$score.D == "很好" ~ "High",
+                                data_score$score.D == "好"~ "Sufficient",
+                                data_score$score.D == "减退"~ "Moderate Loss",
+                                data_score$score.D == "衰弱"~ "Significant Loss")
+
+data_score$score.D <- factor(data_score$score.D,levels = c("High","Sufficient","Moderate Loss", "Significant Loss"))
+
+tab <- data_score %>% select(AgeFactor,Gender,score.D,prop)
+
+tab <- tab %>% pivot_wider(id_cols = c(AgeFactor,Gender),names_from = score.D,values_from = prop) %>% arrange(AgeFactor)
+colnames(tab)[c(1,2)] <-  c("AgeFactor","A2")
+tab <- tab[,c(1,2,6,5,4,3)] %>% mutate(across(all_of(c(3,4,5,6)), function(x){t <- x*100
+  round(t,2)}))
+
+# kable(tab,caption = "各年龄段分性别档次百分比") %>% kable_styling(latex_options = "hold_position") %>%
+#   collapse_rows(columns = 1) 
+tab
+}
+```
+
+
+```{r}
+data1 <- datalist$BJ_data %>%filter(A4 >=25 &A4<=59) %>% mutate(A4_F=A4)%>%cut_by_list("A4_F", seq(25, 60, 35), 25, 60)%>%
+  mutate(AgeFactor=A4_F) %>% select(-A4_F)
+
+data2 <- datalist$BJ_data %>%filter(A4<=89 & A4>=50) %>% mutate(A4_F=A4)%>%cut_by_list("A4_F", seq(55, 90, 5), 50, 90)%>%
+  mutate(AgeFactor=A4_F) %>% select(-A4_F)
+
+data3 <- datalist$BJ_data %>%filter(A4<=89 & A4>=60) %>% mutate(A4_F=A4)%>%cut_by_list("A4_F", seq(60, 90, 30), 60, 90)%>%
+  mutate(AgeFactor=A4_F) %>% select(-A4_F)
+
+#data <- bind_rows(data1,data2)
+data <- bind_rows(data1,data2,data3)
+
+res_percent <- print_percent(data)
+
+```
+
+
+```{r}
+data_all <- data %>% select(AgeFactor,A2,score.D) %>% drop_na
+data_all$A2 <- to_factor(data_all$A2)
+data_all$A2 <- ifelse(data_all$A2=="男","Male","Female")
+data_all1 <- bind_rows(data_all, data_all %>% mutate(A2="All"))
+
+data_all1$A2 <- factor(data_all1$A2,levels = c("Male","Female","All"))
+data_all1$score.D <- to_factor(data_all1$score.D)
+
+data_all1$score.D <- case_when(data_all1$score.D == "很好" ~ "High",
+                                data_all1$score.D == "好"~ "Sufficient",
+                                data_all1$score.D == "减退"~ "Moderate Loss",
+                                data_all1$score.D == "衰弱"~ "Significant Loss")
+
+data_all1$score.D <- factor(data_all1$score.D,levels = c("High","Sufficient","Moderate Loss", "Significant Loss"))
+
+
+data_print <- data_all1 %>% group_by(A2,AgeFactor)%>% summarise(n=n(),.groups = "drop")
+kable(data_print)%>%kable_styling(latex_options = "hold_position")%>%
+  collapse_rows(columns = 1) 
+
+data_fin <- left_join(data_print,res_percent,by=c("A2","AgeFactor"))
+
+kable(data_fin %>% filter(A2=="All")) %>% kable_styling(latex_options = "hold_position")
+```
+
+
+## Table 3
+
+
+### Discrete
+```{r}
+variable <- c("ADL.D","IADL.D")
+res <- lapply(variable, function(x){summary_table(datalist$BJ_data,"score.D",x,cont=F)})
+res
+```
+
+### Continuous
+
+```{r}
+variable <- c("M1.D", "K5.A","M5", "M21")
+res <- lapply(variable, function(x){summary_table(datalist$BJ_data,"score.D",x,cont=T)})
+res
+```
+
+
+### Disease in Table 3
+
+```{r}
+data <- datalist$diseasedata%>%select(D1.1,D1.2,D1.3,D1.9,ID)
+data_tab <- left_join(data,datalist$BJ_data%>%select(ID,score.D),by="ID")
+data_tab <- data_tab %>% select(-ID)%>%drop_na
+
+data_tab <- data_tab %>% mutate(Disease = D1.1+D1.2+D1.3+D1.9,
+                                Any = ifelse(Disease>=1,1,0),
+                                No = ifelse(Disease==0,1,0),
+                                Twomore = ifelse(Disease>=2,1,0))
+data_cal <- data_tab %>% group_by(score.D)%>%summarise(AnyRate = paste0("(",sum(Any),"/",n(),")",100*round(sum(Any)/n(),3),"%"),
+                                                       NoRate = paste0("(",sum(No),"/",n(),")",100*round(sum(No)/n(),3),"%"),
+                                                       TwoMoreRate = paste0("(",sum(Twomore),"/",n(),")",100*round(sum(Twomore)/n(),3),"%"))
+data_cal$score.D <- to_factor(data_cal$score.D)
+kable(t(data_cal))
+```
+
+### Mortality in Table3
+
+```{r}
+data_sf <- readRDS("~/Rcode/data_all.rds")
+data_use2 <- datalist$sample %>% drop_na(score,Age)
+data <- data_sf
+data$Value = data$死亡
+
+data$Value = ifelse(data$Value==1,"Death","Alive")
+data_use2 <- data %>% filter(Age>=60)
+
+
+data_use2$score.D <- to_factor(data_use2$score.D)
+
+data_use2$score.D <- case_when(data_use2$score.D == "很好" ~ "High",
+                                data_use2$score.D == "好"~ "Sufficient",
+                                data_use2$score.D == "减退"~ "Moderate Loss",
+                                data_use2$score.D == "衰弱"~ "Significant Loss")
+
+data_use2$score.D <- factor(data_use2$score.D,levels = c("High","Sufficient","Moderate Loss", "Significant Loss"))
+a <- data_use2 %>%select(score.D,Value)%>% group_by(score.D)%>%mutate(n.all=n()) %>%
+  group_by(score.D,Value)%>%mutate(n=n()) %>% unique
+  a <- a %>% mutate(percentage = paste0("(",n,"/",n.all,")",100*round(n/n.all,3),"%")) %>%
+  arrange(desc(score.D),Value) %>% drop_na
+  b <- a %>%select(score.D,percentage)%>% pivot_wider(names_from = "score.D",values_from = percentage)
+  b
+```
+
+
+## Table 4
+
+### Discrete
+```{r}
+variable <- c("A2","A5_new","D11_D","H1","F3","G2_new")
+res <- lapply(variable, function(x){summary_table(datalist$BJ_data,"score.D",x,cont=F)})
+res
+```
+
+### Continuous
+
+```{r}
+variable <- c("A4")
+res <- lapply(variable, function(x){summary_table(datalist$BJ_data,"score.D",x,cont=T)})
+res
+```
+
+
+## Table S3
+
+
+```{r}
+datalist$updatesample(datalist$BJ_data,"score")
+
+data <- datalist$sample%>%select(Age,Gender,Value)%>%drop_na()
+
+data_all <- bind_rows(data,data%>%mutate(Gender="总"))
+
+data_all$Gender <- factor(data_all$Gender, levels=c("男","女","总"))
+data_new <- data_all %>% mutate(A4_F=Age)%>%cut_by_list("A4_F", seq(30, 90, 5), 25, 90)%>%
+    mutate(AgeFactor=A4_F) %>% select(-A4_F)
+
+data_sum <- data_new %>% group_by(Gender,AgeFactor)%>%summarise(sd=sd(Value),mean=mean(Value),.groups = "drop")
+
+data_sum_all <- data_sum %>% mutate(meanSD = paste0(round(mean,1),"(",round(sd,1),")")) %>% select(-sd,-mean)
+
+data_sumMelt <- pivot_wider(data_sum_all,values_from = "meanSD",names_from = "Gender")
+```
+
+```{r}
+datalist$updatesample(datalist$BJ_data,"score")
+
+data <- datalist$sample%>%select(Age,Gender,Value)%>%drop_na()
+
+data_all <- bind_rows(data,data%>%mutate(Gender="总"))
+
+data_all$Gender <- factor(data_all$Gender, levels=c("男","女","总"))
+data_new <- data_all %>% mutate(A4_F=Age)%>%cut_by_list("A4_F", seq(60, 90, 30), 25, 90)%>%
+    mutate(AgeFactor=A4_F) %>% select(-A4_F)
+
+data_sum <- data_new %>% group_by(Gender,AgeFactor)%>%summarise(sd=sd(Value),mean=mean(Value),.groups = "drop")
+
+data_sum_all <- data_sum %>% mutate(meanSD = paste0(round(mean,1),"(",round(sd,1),")")) %>% select(-sd,-mean)
+
+data_sumMelt2 <- pivot_wider(data_sum_all,values_from = "meanSD",names_from = "Gender")
+
+kable(bind_rows(data_sumMelt2,data_sumMelt))
+```
+## Table S4
+
+### Table S4-1
+```{r}
+kable(data_fin %>% filter(A2=="Male")) %>% kable_styling(latex_options = "hold_position")
+```
+
+
+### Table S4-2
+```{r}
+kable(data_fin %>% filter(A2=="Female")) %>% kable_styling(latex_options = "hold_position")
+```
+
+## Table S5
+
+```{r}
+data <- datalist$BJ_data%>%select(A2,A4,score.D)%>%filter(A4>=50)%>%drop_na
+
+data <- data %>% mutate(A4_F=A4)%>%cut_by_list("A4_F", seq(60, 90, 10), 50, 90)%>%
+    mutate(AgeFactor=A4_F) %>% select(-A4_F,-A4)
+
+compare_prop <- function(data,agegroup){
+  data$A2 <- to_factor(data$A2)
+  data$score.D <- to_factor(data$score.D)
+  levels(data$score.D) <- c("很好","好","减弱","衰退") 
+  data_sum <- data %>% group_by(AgeFactor,A2,score.D) %>%summarise(count=n(),.groups = "drop")
+  data_all <- data %>% group_by(AgeFactor,A2)%>% summarise(count=n(),.groups = "drop")
+  data_sum_50 <- data_sum %>% filter(AgeFactor==agegroup)%>%pivot_wider(names_from = "A2",values_from = "count")%>%select(-c(AgeFactor,score.D))
+  
+  
+  data_sum_50_prop = apply(data_sum_50,2,function(x){x/sum(x)})
+  
+  p_50 <- rep(0,4)
+  p_diff <- rep(0,4)
+  varp <- rep(0,4)
+  count <- data_all%>%filter(AgeFactor==agegroup)%>%pull(count)
+  for(i in 1:4){
+    p_diff[i] <- data_sum_50_prop[i,1]-data_sum_50_prop[i,2]
+    varp[i] <- as.numeric(data_sum_50_prop[i,1]*(1-data_sum_50_prop[i,1])/count[1] + data_sum_50_prop[i,2]*(1-data_sum_50_prop[i,2])/count[2])
+    z <- abs(p_diff[i])/sqrt(varp[i])
+    p_50[i] <- pnorm(as.numeric(z),lower.tail = F)
+  }
+  result <- signif(p.adjust(p_50*2,method = "BH"),2)
+  Prop_result <- cbind(c("Significant loss","Moderate loss","Sufficient","High"),round(data_sum_50_prop,3),round(result,3))
+  Prop_result <- rbind(rep(agegroup,4),Prop_result)
+  #return(result)
+  return(Prop_result)
+}
+```
+
+```{r}
+p60 <- compare_prop(data,"60-69")
+p70 <- compare_prop(data,"70-79")
+p80 <- compare_prop(data,"80-89")
+
+```
+
+```{r}
+data <- datalist$BJ_data%>%select(A2,A4,score.D)%>%filter(A4>=60)%>%drop_na
+
+data <- data %>% mutate(AgeFactor="60-89") %>% select(-A4)
+
+p601 <- compare_prop(data,"60-89")
+
+a <- cbind(p601,p60,p70,p80)
+t(a)
+```

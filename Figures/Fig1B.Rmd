@@ -1,0 +1,375 @@
+---
+title: "雷达图20230525"
+always_allow_html: yes
+output:
+  pdf_document:
+    includes:
+      in_header: "../library/header.tex"
+    keep_tex: yes
+    extra_dependencies: "subfig"
+    latex_engine: xelatex
+knit: (function(inputFile, encoding) {
+      out_dir <- "reports";
+      rmarkdown::render(inputFile,
+                        encoding=encoding,
+                        output_dir=file.path(dirname(inputFile), out_dir))})
+---
+
+```{r header,echo=FALSE,results='hide',warning = FALSE,message = FALSE}
+knitr::opts_chunk$set(
+  warning = FALSE, # show warnings during codeNbook generation
+  message = FALSE, # show messages during codebook generation
+  error = TRUE, # do not interrupt codebook generation in case of errors,
+                # usually better for debugging
+  echo = FALSE,  # show R code
+  paged.print=FALSE,
+  fig.pos = 'H', 
+ out.width = "100%"
+)
+library(showtext)
+showtext_auto()
+box::use(../library/utils[...])
+#顾宇嘉
+```
+
+```{r}
+library(ggradar)
+box::use(ggplot2[...])
+box::use(haven[...])
+box::use(tidyr[...])
+box::use(dplyr[...])
+box::use(stringr[...])
+box::use(psych[...])
+box::use(reshape2[...])
+box::use(kableExtra[...])
+box::use(ggsci[...])
+box::use(grid[...])
+box::use(gridExtra[...])
+box::use(cowplot[...])
+box::use(mgcv[...])
+
+```
+
+
+```{r function}
+# 原亚维度得分
+total_score <- function(data){
+  data1 <- data %>% select(ID,A2,A4,J1,K7.A.1,J1.D, C4,K2.2.D,K7.A.1_new,K2.2,K6.2,E6_DAS,B1.D,C1.D) %>% filter(A2<=2,A4>=50,A4<=89) %>%
+    drop_na(ID,A2,A4,C4,K2.2.D,K7.A.1_new,E6_DAS,B1.D,C1.D,K6.2) %>% filter(C4>=1 & C4<=3)
+  data1 <- data1 %>% mutate(C4_new = case_when(
+    C4==1 ~ 3,
+    C4==2 ~ 2,
+    C4==3 ~ 1
+  ),
+  K2.2.D = case_when(
+    K2.2.D==1 ~ 1,
+    K2.2.D==2 ~ 4,
+    K2.2.D==3 ~ 3,
+    K2.2.D==4 ~ 2,
+    K2.2.D==5 ~ 1
+  )
+  )
+  
+    # 认知
+  data1 <- data1 %>% mutate(J1.D_new =case_when(
+    (A4>=50) ~cut(J1,breaks=c(0,14,23,Inf),labels=F)
+  ))
+  
+  data1 <- data1 %>% mutate(J1.D_new = ifelse(A4<50,3,J1.D_new))%>%drop_na(J1.D_new)
+
+  # data1 <- data1 %>% mutate(K7.A.1_new2 = case_when(
+  #   (A4 >=60) ~ K7.A.1_new,
+  #   (A4 >=50&A4<60) ~ cut(K7.A.1, breaks = c(0,0.8,1.4,Inf),labels=F,right=F)
+  # ))
+  
+  data1 <- data1 %>% mutate(K7.A.1_new2 = cut(K7.A.1, breaks = c(0,0.6,0.9,1.3,Inf),labels=F,right=F))
+  
+  data1 <- data1 %>% mutate(K6.2.D = case_when(
+    (A2==1) ~ cut(K6.2, breaks=c(0,20,30,40,Inf),labels=F,right=F),
+    (A2==2) ~ cut(K6.2, breaks=c(0,15,22,30,Inf),labels=F,right=F)
+  ))
+  
+  data1 <- data1 %>% mutate(K2.2.D = K2.2.D/5+4*K6.2.D/5)
+  
+  data1 <- data1 %>% mutate(AgeFactor=case_when(
+    (A4>=50 & A4 <= 59) ~ "50-59",
+    (A4>=60 & A4 <= 74) ~ "60-74",
+    (A4>=75 & A4 <= 89) ~ "75-89"))
+  
+    data1 <- data1 %>% mutate(psy_new =E6_DAS+B1.D*2.5+C1.D*20+1)
+    weight_use <- data1 %>% select(J1.D_new,C4_new,K2.2.D,K7.A.1_new2,psy_new)
+  
+  data1 <- data1 %>% group_by(AgeFactor)%>%mutate(across(c(C4_new,J1.D_new,K7.A.1_new2,K2.2.D,psy_new), function(x){(x-min(x))/(max(x)-min(x))}))
+  
+  score_use <- data1 %>% ungroup %>% select(J1.D_new,C4_new,K2.2.D,K7.A.1_new2,psy_new)
+  
+
+    decision_x <- apply(weight_use, 2, function(x){x/sum(x)})
+    entropy_cal <- function(x){
+      n <- length(x)
+      u <- c()
+      for(i in 1:n){
+        u[i] <- ifelse(x[i]==0,0,x[i]*log(x[i]))
+      }
+      Ent <- -sum(u)/log(n)
+      return(Ent)
+    }
+    
+    ent <- apply(decision_x,2,entropy_cal)
+    weights <- (1-ent)/sum(1-ent)
+  
+  
+  score_all <- apply(score_use,1,function(x){sum(weights*x)})
+  
+  psy_score <- data1$psy_new*weights[5]
+  
+  score_out <- data1 %>% ungroup %>% mutate(score_all = score_all,
+                                            J1_score = J1.D_new * weights[1],
+                                            C4_score = C4_new * weights[2],
+                                            K2.2_score = K2.2.D * weights[3],
+                                            K7.A.1_score = K7.A.1_new2 * weights[4],
+                                            psy_score = psy_score,
+                                            score3 = J1_score + C4_score+K7.A.1_score+K2.2_score
+  )
+  score_out <- score_out %>% mutate(J1_prop = J1_score/score_all,
+                                    C4_prop = C4_score/score_all,
+                                    K2.2_prop = K2.2_score/score_all,
+                                    K7.A.1_prop = K7.A.1_score/score_all,
+                                    psy_prop = psy_score/score_all)
+  
+  score_weight <- score_all +1
+  #box-cox
+  res <- MASS::boxcox(score_weight~1,data=data.frame(score_weight),lambda=seq(0,10,1/10),plotit=F)
+  lambda <- res$x[which.max(res$y)]
+  score_boxcox <- (score_weight^lambda -1)/lambda
+  #标准化
+  score_01 <- (score_boxcox-mean(score_boxcox))/sd(score_boxcox)
+  #线性映射
+  score <- 100*(score_01-min(score_01))/(max(score_01)-min(score_01))
+  
+  score_out <- score_out %>% mutate(score_weight = score_weight,
+                                    score_boxcox = score_boxcox,
+                                    score_01 = score_01,
+                                    score=score)
+  
+  return(score_out)
+}
+
+# 得到亚维度连续得分
+total_score_cont <- function(totaldata) {
+  J1_score_model = lm(J1_score ~ J1, data = total_data)
+C4_score_model = lm(C4_score ~ C4, data = total_data)
+K2.2_score_model_gam = gam(K2.2_score ~ s(K2.2) + K6.2 + A2 + K6.2 * A2, data = total_data)
+K7.A.1_score_model = lm(K7.A.1_score ~ K7.A.1, data = total_data)
+psy_score_model = lm(psy_score ~E6_DAS+B1.D+C1.D, data = total_data)
+
+total_data$J1_score_cont = predict(J1_score_model,total_data)
+total_data$C4_score_cont = predict(C4_score_model,total_data)
+total_data$K2.2_score_cont = predict(K2.2_score_model_gam, total_data)
+total_data$K7.A.1_score_cont = predict(K7.A.1_score_model, total_data)
+total_data$psy_score_cont = predict(psy_score_model, total_data)
+
+total_data <- total_data %>%
+  mutate(score_all_cont = J1_score_cont + C4_score_cont + K2.2_score_cont + K7.A.1_score_cont + psy_score_cont)
+
+  
+  score_weight_cont <- total_data$score_all_cont +1
+  #box-cox
+  res <- MASS::boxcox(score_weight_cont~1,data=data.frame(score_weight_cont),lambda=seq(0,10,1/10),plotit=F)
+  lambda_cont <- res$x[which.max(res$y)]
+  score_boxcox_cont <- (score_weight_cont^lambda_cont -1)/lambda_cont
+  #标准化
+  score_01_cont <- (score_boxcox_cont-mean(score_boxcox_cont))/sd(score_boxcox_cont)
+  #线性映射
+  score_cont <- 100*(score_01_cont-min(score_01_cont))/(max(score_01_cont)-min(score_01_cont))
+  
+  total_data <- total_data %>% mutate(score_weight_cont = score_weight_cont,
+                                    score_boxcox_cont = score_boxcox_cont,
+                                    score_01_cont = score_01_cont,
+                                    score_cont=score_cont)
+  
+return(total_data)
+}
+
+getQuantile <- function(x){ecdf(x)(x)}
+# 雷达图
+plot_radar <- function(data,id,color_values=c("#3B4992", "#EE0000", "#008B45", 
+                                  "#631879"),point_size=4,label_size=4){
+  
+  radar_use <- data%>%select("score.D","ID","J1_score_cont","C4","K2.2_score_cont","K7.A.1_score_cont","psy_score_cont")%>%
+  mutate_at(vars(-c(score.D,ID,C4)),getQuantile)
+  
+  radar_use$C4 = ifelse(radar_use$C4==1,1,ifelse(radar_use$C4==2,0.5,0))
+  
+  data_plot <- radar_use %>% filter(ID==id)
+  col <- case_when(
+    (data_plot$score.D=="衰弱") ~ color_values[1],
+    (data_plot$score.D=="减退") ~ color_values[2],
+    (data_plot$score.D=="好") ~ color_values[3],
+    (data_plot$score.D=="很好") ~ color_values[4]
+  )
+  data_plot <- data_plot%>%select(-score.D)
+  
+  p <- ggradar(data_plot[1,],axis.labels = c("Cognitive","Sensory","Vitality","Locomotive","Psychological"),font.radar = "yahei-bold",group.colours = col,group.point.size = point_size,axis.label.size = label_size,grid.label.size = 6)
+  
+  p+theme_bw()+theme(panel.grid= element_blank(),plot.margin = margin(0, -0.5, 0,-0.5, "cm"),
+                  panel.border = element_blank(),
+                  axis.ticks = element_blank(),
+                  axis.text = element_blank(),
+                  legend.position = "none")
+}
+
+# 数据表格
+plot_tab <- function(data,id,variables=c("A2","A4","score","score.D","J1_score_cont","C4",
+                                         "K2.2_score_cont","K7.A.1_score_cont",
+                                         "psy_score_cont"),textsize=10){
+  data_all <- data %>%select(ID,all_of(variables))
+  data_tab <- data %>%filter(ID==id)%>%select(all_of(variables))
+  
+  data_tab$A2 = ifelse(data_tab$A2==1,"男","女")
+  data_tab$C4 = 4-data_tab$C4
+  data_tab <- data_tab%>% mutate_at(vars(-c(score,A2,A4,score.D,C4)),function(x){as.character(round(x,4))})
+  data_tab1 <- data_all %>% mutate_at(vars(-c(ID,A2,A4,score.D,C4,score)),getQuantile)%>%filter(ID==id)%>%select(-ID)
+  data_tab1$A2 = ifelse(data_tab1$A2==1,"男","女")
+  data_tab1 <- data_tab1 %>% mutate_at(vars(-c(A2,A4,score.D,C4,score)),function(x){as.character(round(100*x,2))})
+  data_tab1$C4 = ifelse(data_tab1$C4==1,100,ifelse(data_tab1$C4==2,50,0))
+  data_tab2 <- rbind(data_tab,data_tab1)
+  
+  
+  colnames(data_tab2) <- c("性别","年龄","得分","内在功能分级","认知","听力","活力","运动","心理")
+  
+  
+  
+  tab1 <- tableGrob(data_tab2,theme=ttheme_minimal(base_size = textsize))
+  tab1
+}
+
+```
+
+
+```{r data build}
+data_use <- list()
+data_use[[1]] <- total_score(datalist$BJ_data)
+total_data = data_use[[1]]
+total_data_cont =total_score_cont(total_data)
+
+threshold = mean(total_data_cont$score,na.rm=T) + c(-2,-0.75,1.5)*sd(total_data_cont$score,na.rm=T)
+
+total_data_cont <- total_data_cont %>% mutate(score.D = case_when(
+  (score <= threshold[1]) ~ "衰弱",
+  (score > threshold[1] & score <= threshold[2]) ~ "减退",
+  (score > threshold[2] & score <= threshold[3]) ~ "好",
+  (score > threshold[3]) ~ "很好",
+))
+
+threshold_cont = mean(total_data_cont$score_cont,na.rm=T) + c(-2,-0.75,1.5)*sd(total_data_cont$score_cont,na.rm=T)
+
+total_data_cont <- total_data_cont %>% mutate(score_cont.D = case_when(
+  (score_cont <= threshold_cont[1]) ~ "衰弱",
+  (score_cont > threshold_cont[1] & score_cont <= threshold_cont[2]) ~ "减退",
+  (score_cont > threshold_cont[2] & score_cont <= threshold_cont[3]) ~ "好",
+  (score_cont > threshold_cont[3]) ~ "很好",
+))
+data_use[[1]] = total_data_cont
+total_data_cont <- total_score_cont(total_score(datalist$BJ_data))
+
+threshold = mean(total_data_cont$score,na.rm=T) + c(-2,-0.75,1.5)*sd(total_data_cont$score,na.rm=T)
+
+total_data_cont <- total_data_cont %>% mutate(score.D = case_when(
+  (score <= 20) ~ "衰弱",
+  (score > 20 & score <= 40) ~ "减退",
+  (score > 40 & score <= 75) ~ "好",
+  (score > 75) ~ "很好",
+))
+
+```
+
+```{r Pre}
+showtext_auto(enable = TRUE)
+font_add("yahei", regular = "/extra/Fonts/msyh.ttc")
+font_add("yahei-bold", regular = "/extra/Fonts/msyhbd.ttc")
+
+datalist$updatesample(datalist$BJ_data,"K2.2.D")
+```
+
+```{r,eval=FALSE}
+lucky_n <- sample(1:9053,1)
+id1 <- total_data_cont%>%slice(lucky_n)%>%pull(ID)
+
+showtext_auto(enable = TRUE)
+font_add("yahei", regular = "/extra/Fonts/msyh.ttc")
+font_add("yahei-bold", regular = "/extra/Fonts/msyhbd.ttc")
+
+p1 <- plot_radar(total_data_cont,id1)
+
+tab1 <- plot_tab(total_data_cont,id1,textsize = 9)
+
+plot_grid(tab1,p1,nrow = 2,ncol=1,rel_heights = c(1,3))
+```
+
+
+```{r}
+load("120ID4.RData")
+id_order <- which(datalist$BJ_data_raw$ID4 %in% ID4)
+ID_120 <- datalist$BJ_data_raw$ID[id_order]
+
+data120 <- datalist$BJ_data[which(datalist$BJ_data$ID %in% ID_120),]
+data120_50 <- data120 %>%filter(A4>=50)
+
+#lucky_4 <- sample(1:60,5)
+lucky_4 <- c(2,4,10,20,22)
+
+id_4 <- data120_50%>%slice(lucky_4)%>%pull(ID)
+id_jiantui <- total_data_cont%>%filter(score.D=="减退")%>%slice(1)%>%pull(ID)
+id_shuairuo <- total_data_cont%>%filter(score.D=="衰弱")%>%slice(1)%>%pull(ID)
+```
+
+```{r fig.align='center',fig.height=7}
+
+showtext_auto(enable = TRUE)
+font_add("yahei", regular = "/extra/Fonts/msyh.ttc")
+font_add("yahei-bold", regular = "/extra/Fonts/msyhbd.ttc")
+showtext_opts(dpi = 600)
+p1 <- plot_radar(total_data_cont,id_4[1],point_size = 4.5,label_size = 3)
+
+# tab1 <- plot_tab(total_data_cont,id_4[1],textsize = 4.5)
+# 
+# p_henhao <- plot_grid(tab1,p1,nrow = 2,ncol=1,rel_heights = c(1,3))
+
+p2 <- plot_radar(total_data_cont,id_4[2],point_size = 4.5,label_size = 3)
+
+# tab1 <- plot_tab(total_data_cont,id_4[2],textsize = 4.5)
+# 
+# p_hao <- plot_grid(tab1,p1,nrow = 2,ncol=1,rel_heights = c(1,3))
+
+p3 <- plot_radar(total_data_cont,id_jiantui,point_size = 4.5,label_size = 3)
+
+# tab1 <- plot_tab(total_data_cont,id_jiantui,textsize = 4.5)
+# 
+# p_jiantui <- plot_grid(tab1,p1,nrow = 2,ncol=1,rel_heights = c(1,3))
+
+p4 <- plot_radar(total_data_cont,id_shuairuo,point_size = 4.5,label_size = 3)
+
+# tab1 <- plot_tab(total_data_cont,id_shuairuo,textsize = 4.5)
+# 
+# p_shuairuo <- plot_grid(tab1,p1,nrow = 2,ncol=1,rel_heights = c(1,3))
+
+p_radar <- plot_grid(p1,p2,p3,p4,ncol = 2,nrow = 2)
+
+# ggexport(p_radar, filename = "Fig1B.jpg", width = 20, height = 15, units = "cm", res = 600)
+```
+```{r,fig.height=7,fig.width=7}
+ggsave(plot=p1, filename = "Fig1B1.pdf", width = 15, height = 10, units = "cm", dpi = 600)
+```
+
+```{r,fig.height=7,fig.width=7}
+ggsave(plot=p2, filename = "Fig1B2.pdf", width = 15, height = 10, units = "cm", dpi = 600)
+```
+
+```{r,fig.height=7,fig.width=7}
+ggsave(plot=p3, filename = "Fig1B3.pdf", width = 15, height = 10, units = "cm", dpi = 600)
+```
+
+```{r,fig.height=7,fig.width=7}
+ggsave(plot=p4, filename = "FigS1B4.pdf", width = 15, height = 10, units = "cm", dpi = 600)
+```

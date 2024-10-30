@@ -1,0 +1,246 @@
+---
+title: "Fig2"
+always_allow_html: yes
+output:
+  pdf_document:
+    includes:
+      in_header: "../library/header.tex"
+    keep_tex: yes
+    extra_dependencies: "subfig"
+    latex_engine: xelatex
+knit: (function(inputFile, encoding) {
+      out_dir <- "reports";
+      rmarkdown::render(inputFile,
+                        encoding=encoding,
+                        output_dir=file.path(dirname(inputFile), out_dir))})
+---
+
+```{r header,echo=FALSE,results='hide',warning = FALSE,message = FALSE}
+knitr::opts_chunk$set(
+  warning = FALSE, # show warnings during codeNbook generation
+  message = FALSE, # show messages during codebook generation
+  error = TRUE, # do not interrupt codebook generation in case of errors,
+                # usually better for debugging
+  echo = FALSE,  # show R code
+  paged.print=FALSE,
+  fig.pos = 'H', 
+ out.width = "100%"
+)
+library(showtext)
+showtext_auto()
+box::use(../library/utils[...])
+```
+
+```{r}
+box::use(ggplot2[...])
+box::use(haven[...])
+box::use(rms[...])
+box::use(tidyr[...])
+box::use(dplyr[...])
+box::use(stringr[...])
+box::use(psych[...])
+box::use(reshape2[...])
+box::use(kableExtra[...])
+box::use(ggsci[...])
+box::use(segmented[...])
+box::use(labelled[...])
+```
+```{r}
+showtext_auto(enable = TRUE)
+font_add("yahei", regular = "/extra/Fonts/msyh.ttc")
+font_add("yahei-bold", regular = "/extra/Fonts/msyhbd.ttc")
+showtext_opts(dpi = 600)
+```
+
+
+## Fig 2A
+
+```{r}
+plot_cv <- function(df,xlab,ylab,legend.title){
+  data <- df %>%select(A2,A4,score)%>%filter(A4<=89 & A4>=25) %>% drop_na() 
+  data <-data %>% mutate(A4_F=A4)%>%cut_by_list("A4_F", seq(30, 90, 10), 25, 90)%>%
+  mutate(AgeFactor=A4_F) %>% select(-A4_F) 
+
+data_plot2 <- data %>% group_by(AgeFactor,A2) %>% mutate(CV_score = sd(score)/mean(score)) %>%
+  ungroup
+
+data_plot2$A2 <- to_factor(data_plot2$A2)
+levels(data_plot2$A2) <- c("Male","Female")
+
+ggplot(data_plot2,aes(x=AgeFactor,y=CV_score,group=A2))+
+  geom_point(aes(color=A2)) + 
+  geom_line(aes(color=A2)) +
+  scale_color_manual(values = c("#3B4992","#EE0000"))+
+  scale_y_continuous(limits=c(0,1), breaks = seq(0,1,by=0.2))+
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()) +
+  theme_bw() + 
+  theme(axis.line = element_line(colour = "black"),
+          panel.grid.major = element_blank(),
+          panel.grid.minor = element_blank(),
+          panel.border = element_blank(),
+          panel.background = element_blank(),
+         axis.text = element_text(size=12),
+          axis.title = element_text(size=12),
+          legend.text = element_text(size=12)) +
+  theme(legend.position = c(0.85,0.85),
+        legend.title = element_blank())+
+  guides(color=guide_legend(title=legend.title))+
+  labs(x = xlab, y = ylab) 
+}
+
+p2A<- plot_cv(datalist$BJ_data,"Age group","Coefficient of variation","Gender")
+# ggexport(p2A, filename = "Fig2A.jpg", width = 17, height = 10, units = "cm", res = 600)
+ggsave(plot=p2A, filename = "Fig2A.pdf", width = 17, height = 10, units = "cm", dpi = 600)
+```
+
+## Fig 2B
+
+```{r,fig.width=6}
+plot_subDimCV <- function(data,xlab,ylab,legend.title,AgeF=T){
+  df <- data %>% select(A4,all_of(c("J1_score","C4_score","K2.2_score","K7.A.1_score","psy_score"))) %>% drop_na()
+  if(AgeF==T){
+  df <- df%>% filter(A4>=40)%>%mutate(A4_F=A4)%>%cut_by_list("A4_F", seq(50, 90, 10), 40, 90)%>%
+  mutate(AgeFactor=A4_F)%>%select(-A4_F)
+  }else{
+    df <- df%>%filter(A4>=50) %>%mutate(A4_F=A4)%>%cut_by_list("A4_F", seq(60, 90, 10), 50, 90)%>%
+  mutate(AgeFactor=A4_F)%>%select(-A4_F)
+  }
+    df <- df  %>% mutate(across(all_of(c("J1_score","C4_score","K2.2_score","K7.A.1_score","psy_score")), function(x){100*x/max(x,na.rm=T)}))
+  
+  df_cv <- df %>% group_by(AgeFactor)%>% mutate(across(c("J1_score","C4_score","K2.2_score","K7.A.1_score","psy_score"),function(x){sd(x)/mean(x)})) %>% ungroup
+  
+  colnm <- c("Age","Cognition","Sensory","Vitality","Locomotion","Psychology","AgeFactor")
+  
+  colnames(df_cv) <- colnm
+  
+df_plot <- melt(df_cv%>%select(-Age),id.vars = c("AgeFactor"))
+
+df_plot$value <- ifelse(df_plot$AgeFactor=="40-49" & df_plot$variable=="Cognition",
+                        NA,df_plot$value)
+
+ggplot(df_plot, aes(x=AgeFactor,y=value,group=variable))+
+  geom_point(aes(color=variable))+
+  geom_line(aes(color=variable))+
+  scale_color_simpsons()+
+  theme_bw()+
+    labs(x = xlab, y = ylab, color=legend.title)+
+    scale_y_continuous(limits = c(0,1),breaks = seq(0,1,by=0.2))+
+    guides(fill="none") + 
+    theme(panel.grid = element_blank())+
+    theme(legend.key = element_blank(),
+          legend.position=c(0.5,0.92),
+          legend.direction = "horizontal",
+          legend.title = element_blank(),
+          axis.line = element_line(colour = "black"),
+          panel.grid.major = element_blank(),
+          panel.grid.minor = element_blank(),
+          panel.border = element_blank(),
+          panel.background = element_blank(),
+           axis.text = element_text(size=12),
+          axis.title = element_text(size=12),
+          legend.text = element_text(size=10))+
+  guides(color=guide_legend(label.position = "left"))
+  
+  
+}
+
+```
+
+```{r,fig.width=6}
+p2B <- plot_subDimCV(datalist$scoredata, "Age group","Coefficient of variation", "Sub-domain",AgeF = F)
+ggsave(plot=p2B, filename = "Fig2B.pdf", width = 17, height = 10, units = "cm", dpi = 600)
+```
+
+## Fig 2C
+
+```{r}
+plot_stack <- function(data,dim ,xlab,ylab,legend.title, combine=F,all=F){
+  
+  
+  a <- data %>% select(A2,A4,AgeFactor,all_of(dim),score_all,score.D)%>%drop_na
+  
+  
+  data1 <- a %>%filter(A4>=50)
+  
+  b <- data1 %>% mutate(prop = !!sym(dim)/score_all)
+  b$score.D<-labelled::to_factor(b$score.D)
+  
+  if(combine){
+    b$score.D = case_when(
+      (b$score.D=="很好") ~ "很好/好",
+      (b$score.D=="好") ~ "很好/好",
+      (b$score.D=="减退") ~ "减退/衰弱",
+      (b$score.D=="衰弱") ~ "减退/衰弱",
+    )
+  }
+  if(all){
+    b2 <- b %>% group_by(score.D)%>%summarise(prop_mean = 100*round(mean(prop),3),.groups = "drop")
+    levels(b2$score.D) = c("Significant loss", "Moderate loss", "Sufficient","High")
+    ggplot(b2,aes(x=score.D,y=prop_mean,fill=score.D))+
+      geom_col(aes(fill=score.D),width=0.6)+
+      geom_text(aes(label=prop_mean),size=2,vjust=-0.3)+
+      scale_fill_simpsons()+
+      #  facet_wrap(~score.D,nrow = 4)+
+      labs(x=xlab,y=ylab)+
+      scale_y_continuous(limits = c(0,50),breaks = seq(0,50,by=10))+
+      theme_bw() +
+      theme(axis.ticks.length = unit(0.1, "cm")) +
+      theme(panel.grid = element_blank()) +
+      theme(panel.border = element_blank()) +
+      theme(axis.line = element_line(size = 0.5, colour = "black")) +
+      theme(
+        legend.title = element_blank(),
+        legend.background = element_blank(), 
+        legend.position=c(0.5,0.92)
+      )+
+      guides(fill=guide_legend(label.position = "left"))
+  } else{
+    # b2 <- b2 %>%filter(!(score.D==1 & AgeFactor=="50-59"))
+    # b3 <- melt(b2,id.vars = c("A2","AgeFactor","score.D"),
+    #            measure.vars = prop_mean,value.name = "prop")
+    b <- b %>% mutate(A4_F=A4)%>%cut_by_list("A4_F", seq(60, 90, 10), 50, 90)%>%
+      mutate(AgeFactor=A4_F) %>% select(-A4_F) 
+    b2 <- b %>% group_by(AgeFactor,score.D)%>%summarise(prop_mean = 100*round(mean(prop),3),.groups = "drop")
+    levels(b2$score.D) = c("Significant loss", "Moderate loss", "Sufficient","High")
+    b2$score.D <- factor(b2$score.D, levels = rev(c("Significant loss", "Moderate loss", "Sufficient","High")))
+    
+    color = pal_simpsons("springfield")(4)
+    
+    ggplot(b2,aes(x=AgeFactor,y=prop_mean,fill=score.D))+
+      geom_col(position = position_dodge(0.3),width=0.8)+
+      geom_text(aes(label=prop_mean),position = position_dodge(0.3),size=3,vjust=-0.3)+
+      scale_fill_manual(values = rev(color))+
+      #  facet_wrap(~score.D,nrow = 4)+
+      labs(x=xlab,y=ylab)+
+      scale_y_continuous(limits = c(0,55),breaks = seq(0,50,by=10),expand = c(0,0))+
+      facet_wrap(~score.D,strip.position = "bottom",ncol=4)+
+      theme_bw() +
+      theme(axis.ticks.length = unit(0.1, "cm")) +
+      theme(panel.grid = element_blank()) +
+      theme(panel.border = element_blank()) +
+      theme(axis.line = element_line(size = 0.5, colour = "black"),
+             axis.text = element_text(size=9),
+          axis.title.x = element_text(size=12),
+          axis.title.y = element_text(size=9.5),
+          legend.text = element_text(size=12),
+          legend.key.size = unit(10, "pt")) +
+      theme(
+        legend.title = element_blank(),
+        legend.background = element_blank(), 
+        legend.position=c(0.5,0.92),
+        legend.direction = "horizontal")+
+      theme(strip.background = element_blank(),
+            strip.text = element_blank(),
+              strip.placement = "outside")+
+      guides(fill=guide_legend(label.position = "left"))
+  }
+}
+```
+
+```{r,fig.height=5,fig.width=6}
+p2C <- plot_stack(datalist$scoredata,"psy_score","Age group","Percentage of phychological domain in original score(%)","分档")
+# ggexport(p2C, filename = "Fig2C.jpg", width = 17, height = 10, units = "cm", res = 600)
+ggsave(plot=p2C, filename = "Fig2C.pdf", width = 17, height = 10, units = "cm", dpi = 600)
+```
+
+

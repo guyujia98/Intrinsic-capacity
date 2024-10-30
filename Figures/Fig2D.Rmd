@@ -1,0 +1,220 @@
+---
+title: "相关网络分析"
+author: "ruc isbd"
+date: '2022-11-02'
+output:
+  pdf_document:
+    includes:
+      in_header: "../library/header.tex"
+    keep_tex: yes
+    extra_dependencies: "subfig"
+    latex_engine: xelatex
+knit: (function(inputFile, encoding) {
+      out_dir <- "reports";
+      rmarkdown::render(inputFile,
+                        encoding=encoding,
+                        output_dir=file.path(dirname(inputFile), out_dir))})
+---
+```{r header,echo=FALSE,results='hide',warning = FALSE,message = FALSE}
+knitr::opts_chunk$set(
+  warning = FALSE, # show warnings during codeNbook generation
+  message = FALSE, # show messages during codebook generation
+  error = TRUE, # do not interrupt codebook generation in case of errors,
+                # usually better for debugging
+  echo = FALSE,  # show R code
+  paged.print=FALSE,
+  fig.pos = 'H', 
+ out.width = "100%"
+)
+library(showtext)
+showtext_auto()
+box::use(../library/utils[...])
+box::use(r/core[...])
+box::use(tidyr[...])
+box::use(kableExtra[...])
+box::use(dplyr[...])
+box::use(knitr[...])
+box::use(ppcor[...])
+box::use(Hmisc[...])
+box::use(igraph[...])
+library(ggraph)
+box::use(tidygraph[...])
+box::use(ggplot2[...])
+box::use(ggsci[...])
+box::use(ppcor[...])
+# author tufuyi to Zhang
+```
+
+```{r}
+
+network_plot <- function(data,p,layout){
+  nr <- ncol(data)
+  colnames(data)<- c("Age","Education","Health awareness","Urban","Not alone","Economic situation","Convenient medical service","Female")
+  #corr <- rcorr(as.matrix(data), type = "spearman")
+  #rcorr <- corr$r
+  #pcorr <- corr$P
+  corr <- pcor(data,method = "spearman")
+  rcorr <- corr$estimate
+  pcorr <- corr$p.value
+  for(i in 1:nr){
+    for(j in 1:nr){
+      if(i!=j){
+        if(pcorr[i,j] > 0.05){
+          rcorr[i,j] = 0
+        }
+      }
+      if(abs(rcorr[i,j]) < p){
+        rcorr[i,j] = 0
+      }
+    }
+  }
+  ind_zero<-NULL
+  for(i in 1:nr){
+    if(sum(abs(rcorr[,i]))==1||sum(abs(rcorr[,i]))==0){
+      ind_zero <- c(ind_zero,i)
+    }
+  }
+  if(!is.null(ind_zero)){
+    data<-data[,-ind_zero]
+    nr <- ncol(data)
+    corr <- rcorr(as.matrix(data), type = "pearson")
+    rcorr <- corr$r
+    pcorr <- corr$P
+    for(i in 1:nr){
+      for(j in 1:nr){
+        if(i!=j){
+          if(pcorr[i,j] > 0.05){
+            rcorr[i,j] = 0
+          }
+        }
+        if(abs(rcorr[i,j]) < p){
+          rcorr[i,j] = 0
+        }
+      }
+    }
+  }
+  #p<-ncol(data)
+  #sizes <- numeric(p)
+  #for(i in 1:p){
+  #  sizes[i] <- sum(rcorr[,i]!=0)
+  #}
+  g = graph.adjacency(rcorr,mode = "undirected",weight = T,diag =F)
+  weight = E(g)$weight
+  #png(filename = "weight_female.png")
+  #hist(weight,main = "Histogram of weight (female)")
+  #dev.off()
+  name <- colnames(data)
+  Direction <- factor(ifelse(weight >0,"Positive correlated","Negative correlated"),levels = c("Positive correlated","Negative correlated"))
+  g = graph.adjacency(abs(rcorr),mode = "undirected",weight = T,diag =F)
+  graph_gt <- as_tbl_graph(g) %>% 
+    mutate(deg = centrality_degree(mode='in'),
+           group=group_infomap())
+  Weight <- abs(weight)
+  #
+ # V(graph_gt)$deg[V(graph_gt)$deg > 5] = 5
+  ggraph(graph_gt,layout = layout) + 
+    geom_edge_link(aes(colour = Direction,width = Weight))+
+    scale_edge_colour_manual(values = c("#DB2442","#0083B7"))+
+    #geom_edge_fan(aes(edge_width=weight),show.legend=FALSE) + 
+    #geom_node_point(aes(size = deg,fill=factor(group)),shape=21)+ 
+    geom_node_label(aes(label=name,size= deg),color = "#00938D")+
+    #geom_node_label(aes(label=name,size=0.3),color = "#00938D")+
+    scale_fill_simpsons()+
+    scale_edge_width(range=c(0.5,3))+
+    theme(legend.key.size = unit(0.3,"cm"), legend.spacing.y = unit(1.0, 'cm'))+
+    guides(size="none",fill="none")+
+    theme_graph()
+}
+
+process.in <- function(sample,dim_name){
+  if(dim_name == "F3"){
+    sample$Value <- case_when(
+  (sample$Value=="非常宽裕" | sample$Value=="比较宽裕") ~ "宽裕",
+  (sample$Value=="比较困难" | sample$Value=="非常困难") ~ "困难",
+  (sample$Value=="基本够用") ~ "基本够用")
+  }
+  else if(dim_name == "H1"){
+    sample$Value <- case_when(
+  (sample$Value=="市/县城的中心城区" | sample$Value=="市/县城的边缘城区") ~ "城市",
+  (sample$Value=="市/县城的城乡结合部" | sample$Value=="市/县城区以外的镇" | sample$Value=="农村") ~ "农村")
+  }
+  else if(dim_name == "D7"){
+    sample$Value <- case_when(
+  (sample$Value=="非常方便" | sample$Value=="比较方便") ~ "方便",
+  (sample$Value=="不太方便" | sample$Value=="很不方便") ~ "不方便",
+  (sample$Value=="一般") ~ "一般")
+  }
+  return(sample)
+}
+
+Fac_level_choice <- function(dim_name){
+  Fac_levels <- NULL
+  if(dim_name == "F3"){
+    Fac_levels <- c("困难","基本够用","宽裕")
+  }
+  else if(dim_name == "H1"){
+    Fac_levels <- c("农村","城市")
+  }
+  else if(dim_name == "D7"){
+    Fac_levels <- c("不方便","一般","方便")
+  }
+  else if(dim_name == "A5_new"){
+    Fac_levels <- c("文盲","初等教育","中等教育","高等教育")
+  }
+  else if(dim_name == "D11_D"){
+    Fac_levels <- c("不符合","符合")
+  }
+  else if(dim_name == "G2_new"){
+    Fac_levels <- c("独居","不独居")
+  }
+  else if(dim_name == "A2"){
+    Fac_levels <- c("男","女")
+  }
+  else if(dim_name == "score.D"){
+    Fac_levels <- c("衰退","减弱","好","很好")
+  }
+  Fac_levels
+}
+
+data_process<-function(data,dim_name,Ch_name){
+  n_dims <- length(dim_name)
+  Fac_levels <- NULL
+  datalist$updatesample(data,dim_name[1])
+  sample <- process.in(datalist$sample,dim_name[1])
+  Fac_levels <- Fac_level_choice(dim_name[1])
+  data_aov <- sample%>%dplyr::select(ID,A4_F_3,Value)
+  data_aov$Value <- as.numeric(ordered(data_aov$Value,levels = Fac_levels))
+  data_aov$A4_F_3 <- as.numeric(ordered(data_aov$A4_F_3))
+  colnames(data_aov) <- c("ID","年龄（增加）",Ch_name[1])
+  for(i in 2:n_dims){
+    datalist$updatesample(data,dim_name[i])
+    sample <- process.in(datalist$sample,dim_name[i])
+    Fac_levels <- Fac_level_choice(dim_name[i])
+    sample_temp <- sample%>%dplyr::select(ID,Value)
+    sample_temp$Value <- as.numeric(ordered(sample_temp$Value,levels = Fac_levels))
+    colnames(sample_temp)[2] <- Ch_name[i]
+    data_aov <- data_aov%>%full_join(sample_temp,by = "ID")
+  }
+  
+  data_aov <- data_aov%>%drop_na()%>%dplyr::select(-ID)
+  data_aov
+}
+```
+
+
+
+```{r output,fig.cap = "保留原始相关系数的相关网络图"}
+dimnames <- c("A5_new","D11_D","H1","G2_new","F3","D7","A2")
+names <- c("教育程度高","健康意识良好","城市居住","不独居","经济情况良好","看病方便","女性比例 ")
+data <- data_process(datalist$BJ_data,dimnames,names)
+showtext_auto(enable = TRUE)
+font_add("yahei", regular = "~/Rcode/Fonts/msyh.ttc")
+font_add("yahei-bold", regular = "~/Rcode/Fonts/msyhbd.ttc")
+#network_plot(data,0,"stress")
+```
+
+```{r output2,fig.cap = "保留相关系数>0.03的相关网络图",out.width = "120%",fig.width=8,fig.height=5}
+p1<-network_plot(data,0.03,"stress")
+ggsave(plot=p1, filename = "Fig2D.pdf", width = 17, height = 10, units = "cm", dpi = 600)
+```
+

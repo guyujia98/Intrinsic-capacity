@@ -1,0 +1,443 @@
+---
+title: "综合得分整理20231225"
+always_allow_html: yes
+output:
+  pdf_document:
+    includes:
+      in_header: "../library/header.tex"
+    keep_tex: yes
+    extra_dependencies: "subfig"
+    latex_engine: xelatex
+knit: (function(inputFile, encoding) {
+      out_dir <- "reports";
+      rmarkdown::render(inputFile,
+                        encoding=encoding,
+                        output_dir=file.path(dirname(inputFile), out_dir))})
+---
+
+```{r header,echo=FALSE,results='hide',warning = FALSE,message = FALSE}
+knitr::opts_chunk$set(
+  warning = FALSE, # show warnings during codeNbook generation
+  message = FALSE, # show messages during codebook generation
+  error = TRUE, # do not interrupt codebook generation in case of errors,
+                # usually better for debugging
+  echo = FALSE,  # show R code
+  paged.print=FALSE,
+  fig.pos = 'H', 
+ out.width = "100%"
+)
+library(showtext)
+showtext_auto()
+box::use(../library/utils[...])
+#顾宇嘉
+```
+
+```{r}
+box::use(ggplot2[...])
+box::use(haven[...])
+box::use(rms[...])
+box::use(tidyr[...])
+box::use(dplyr[...])
+box::use(stringr[...])
+box::use(psych[...])
+box::use(reshape2[...])
+box::use(kableExtra[...])
+box::use(ggsci[...])
+box::use(segmented[...])
+box::use(labelled[...])
+
+AddCov <- function(){
+  datalist$sample <- left_join(datalist$sample,datalist$habitdata%>%select(ID,D11_D),by="ID")
+  datalist$sample$D11_D <- to_factor(datalist$sample$D11_D)
+}
+```
+
+
+
+## Difference in sub-domain scores between age groups
+
+```{r}
+
+  data_use <- datalist$scoredata
+  data_plot <- data_use%>% ungroup %>%
+    select(A2,A4,all_of(c("J1_score","C4_score","K2.2_score","K7.A.1_score","psy_score"))) %>%filter(A4>=50)%>%drop_na()
+  
+  data_plot <- data_plot  %>% mutate(across(all_of(c("J1_score","C4_score","K2.2_score","K7.A.1_score","psy_score")), function(x){100*x/max(x,na.rm=T)}))
+  Ccol <- c("Cognitive","Sensory","Vitality","Locomotive","Psychological")
+  
+  data_plot <- data_plot %>% mutate(A2 = labelled::unlabelled(A2))
+  colnames(data_plot) <- c("A2","A4",Ccol)
+  
+  data_plot <- data_plot %>% mutate(A4_F=A4)%>%cut_by_list("A4_F", seq(55, 90, 5), 50, 90)%>%
+    mutate(AgeFactor=A4_F) %>% select(-A4_F,-A4,-A2)
+  
+  data_plot <- data_plot %>% group_by(AgeFactor,)%>% mutate(across(all_of(Ccol),mean))%>%ungroup%>%
+    unique
+  
+  data_lpot <- melt(data_plot, id.vars = c("AgeFactor"),measure.vars = Ccol,value.name = "score")
+  
+  base <- data_lpot %>% filter(AgeFactor=="50-54")%>% unique %>% pull(score)
+  
+  tab <- data_lpot %>%arrange(AgeFactor)%>% group_by(AgeFactor)%>%mutate(Ratio = (base - score)/base)
+  
+  tab_fin <- pivot_wider(tab,id_cols = "AgeFactor",names_from = "variable",values_from = "Ratio")
+  
+  tab_fin
+```
+
+## F-test for CV
+
+```{r}
+CV_test <- function(cv1,cv2,n1,n2){
+  F_stat1 <- cv1^2/(1+cv1^2*(n1-1)/n1)
+  F_stat2 <- cv2^2/(1+cv2^2*(n2-1)/n2)
+  
+  F_stat <- F_stat1/F_stat2
+  
+  p_value <- pf(F_stat,n1-1,n2-1)
+  return(p_value)
+}
+```
+
+```{r}
+
+  df <- datalist$BJ_data
+  data <- df %>%select(A2,A4,score)%>%filter(A4<=89 & A4>=25) %>% drop_na() 
+  data <-data %>% mutate(A4_F=A4)%>%cut_by_list("A4_F", seq(30, 90, 10), 25, 90)%>%
+    mutate(AgeFactor=A4_F) %>% select(-A4_F) 
+  
+  data_plot2 <- data %>% group_by(AgeFactor,A2) %>% mutate(CV_score = sd(score)/mean(score)) %>%
+    ungroup
+  
+  data_plot2$A2 <- to_factor(data_plot2$A2)
+  levels(data_plot2$A2) <- c("Male","Female")
+  
+  Age_ls <- sort(unique(data_plot2$AgeFactor))
+  
+  pvalue_ls <- rep(0,length(Age_ls))
+  pvalueAgeM_ls <- rep(0,length(Age_ls)-1)
+  pvalueAgeF_ls <- rep(0,length(Age_ls)-1)
+  for(i in 1:length(Age_ls)){
+    age = Age_ls[i]
+    dataM_cv <- data_plot2 %>% filter(AgeFactor==age & A2=="Male")
+    dataF_cv <- data_plot2 %>% filter(AgeFactor==age & A2=="Female")
+    cv1 <- dataM_cv %>% pull(CV_score)%>% unique
+    cv2 <- dataF_cv %>% pull(CV_score)%>% unique
+    n1 <- nrow(dataM_cv)
+    n2 <- nrow(dataF_cv)
+    pvalue_ls[i] <- CV_test(cv1,cv2,n1,n2)
+    if(i!= length(Age_ls)){
+      ageA = Age_ls[i+1]
+      dataMA_cv <- data_plot2 %>% filter(AgeFactor==ageA & A2=="Male")
+      dataFA_cv <- data_plot2 %>% filter(AgeFactor==ageA & A2=="Female")
+      cv1A <- dataMA_cv %>% pull(CV_score)%>% unique
+      cv2A <- dataFA_cv %>% pull(CV_score)%>% unique
+      n1A <- nrow(dataMA_cv)
+      n2A <- nrow(dataFA_cv)
+      
+      pvalueAgeM_ls[i] <- CV_test(cv1,cv1A,n1,n1A)
+      pvalueAgeF_ls[i] <- CV_test(cv2,cv2A,n2,n2A)
+    }
+  }
+ 
+  
+  
+  paste0(signif(p.adjust(pvalue_ls,method = "BH"),2),gtools::stars.pval(p.adjust(pvalue_ls,method = "BH")))
+  paste0(signif(p.adjust(pvalueAgeM_ls,method = "BH"),2),gtools::stars.pval(p.adjust(pvalueAgeM_ls,method = "BH")))
+  paste0(signif(p.adjust(pvalueAgeF_ls,method = "BH"),2),gtools::stars.pval(p.adjust(pvalueAgeF_ls,method = "BH")))
+  
+
+```
+
+## Test for coefficient of varaition in sub-domains
+
+```{r}
+df <- datalist$scoredata %>% select(A4,all_of(c("J1_score","C4_score","K2.2_score","K7.A.1_score","psy_score"))) %>% drop_na()
+df <- df %>%mutate(A4_F=A4)%>%cut_by_list("A4_F", seq(50, 90, 10), 40, 90)%>%
+  mutate(AgeFactor=A4_F)%>%select(-A4_F)
+```
+
+
+```{r}
+df <- df  %>% mutate(across(all_of(c("J1_score","C4_score","K2.2_score","K7.A.1_score","psy_score")), function(x){100*x/max(x,na.rm=T)}))
+
+df_cv <- df %>% group_by(AgeFactor)%>% mutate(across(c("J1_score","C4_score","K2.2_score","K7.A.1_score","psy_score"),function(x){sd(x)/mean(x)})) %>% ungroup
+
+colnm <- c("Age","Cognitive","Sensory","Vitality","Locomotive","Psychological","AgeFactor")
+
+colnames(df_cv) <- colnm
+
+df_plot <- melt(df_cv%>%select(-Age),id.vars = c("AgeFactor"))
+
+df_plot$value <- ifelse(df_plot$AgeFactor=="40-49" & df_plot$variable=="Cognitive",
+                        NA,df_plot$value)
+Age_ls <- sort(unique(df_plot$AgeFactor))
+variable_ls <- sort(unique(df_plot$variable))
+
+p_value <- matrix(rep(0,20),nrow=5)
+
+for(i in 1:length(variable_ls)){
+  for(j in 1:(length(Age_ls)-1)){
+    group <- variable_ls[i]
+    age = Age_ls[j]
+    age2 = Age_ls[j+1]
+    df1 <- df_plot %>% filter(AgeFactor==age & variable == group)
+    df2 <- df_plot %>% filter(AgeFactor==age2 & variable == group)
+    cv1 <- df1 %>% pull(value)%>% unique
+    cv2 <- df2 %>% pull(value)%>% unique
+    n1 <- nrow(df1)
+    n2 <- nrow(df2)
+    p_value[i,j] <- CV_test(cv1,cv2,n1,n2)
+  }
+}
+p_value
+p_adjust <- apply(p_value,1,function(x){p.adjust(x,method="BH")})
+
+kable(matrix(paste0(signif(p_adjust,2),gtools::stars.pval(p_adjust)),nrow=4))
+
+```
+
+## Test difference in slope between genders; also test the difference before and after change points.
+
+```{r}
+rcs_value = function(variable, data, gender){
+  sample = data %>% filter(A2 == gender) %>% dplyr::select(A4, all_of(variable)) %>% na.omit() 
+  
+  fit.all.in.smoothdata<-function(data,variable){
+    nknot_vec <- c(50,60,70,80)
+    #nknot <- 4
+    fit <- lm(as.formula(paste("`",variable,"`","~rcs(A4,nknot_vec)",sep = "")),data = data)
+    return(data.frame(A4 = data$A4, predict(fit, interval = "confidence")))
+  }
+  
+  outcome <- fit.all.in.smoothdata(sample, variable) %>% distinct(A4,.keep_all = TRUE) %>% arrange(A4)
+  return(data.frame(A4 = outcome$A4, avg_value = outcome$fit))
+}
+
+avg_value = function(variable, data, gender){
+  sample = data %>% filter(A2 == gender) %>% dplyr::select(A4, variable) %>% na.omit() %>%
+    group_by(A4) %>% summarise(avg_value = mean(get(variable)))
+  sample$avg_value = as.double(sample$avg_value)
+  return(sample)
+}
+
+seg_cpdetect_n = function(variable, data, gender, n, type = 's'){
+  if(type == 's'){
+    sample = rcs_value(variable, data, gender)
+  }else{
+    sample = avg_value(variable, data, gender)  # type = 'o'
+  }
+  
+  out.lm = glm(avg_value ~ A4, data = sample)
+  o = segmented(out.lm, npsi = n) 
+  sample$avg_value = o$fitted.values
+  res <- predict(o,se.fit=T)
+  sample$lwr = res$fit-20*res$se.fit
+  sample$upr = res$fit+20*res$se.fit
+  o_sum <- summary(o)
+  o_sum.coef <- o_sum$coefficients
+  o_se <- o_sum.coef[c(2,3),2]
+  
+  psi = rep(0, n)
+  slp = rep(0, n + 1)
+  signif = rep('***', n)
+  a = round(o$psi[,2],0)
+  b = round(o$coefficients[2:(n + 2)],4)
+  for(i in 1:n){
+    psi[i] = a[i]
+    slp[i] = b[i]
+    # todo: 边缘位置处理
+    # abs_v = abs(sample[psi[i] + 5 - 24, 2] - if_else(psi[i] -5 > 89, sample[65, 2], sample[psi[i] - 5 - 24, 2]))
+    # abs_v = abs(sample[psi[i] + 5 - 24, 2] - sample[psi[i] - 5 - 24, 2])
+    # var_v = var(sample[(psi[i] - 5 - 24):(psi[i] - 1 - 24), 2], na.rm = T) + var(sample[(psi[i] + 1 - 24):(psi[i] + 5 - 24), 2], na.rm = T)
+    #if(abs_v < var_v){signif[i] = ''}
+  }
+  slp[n + 1] = b[n + 1]
+  psi = data.frame(psi = psi, value = sample[psi - 24, 2])
+  return(list(sample = sample, psi = psi, slp = slp, signif = signif,se=o_se))
+}
+
+test_segment <- function(variable, data){
+  tabM <- seg_cpdetect_n(variable, data, "男", 1, type = 'o')
+  tabF <- seg_cpdetect_n(variable, data, "女", 1, type = 'o')
+  
+  testM <- 2*pnorm(abs(tabM$slp[1]-tabM$slp[2])/sqrt(tabM$se[1]^2 + tabM$se[2]^2),lower.tail = F)
+  testF <- 2*pnorm(abs(tabF$slp[1]-tabF$slp[2])/sqrt(tabF$se[1]^2 + tabF$se[2]^2),lower.tail = F)
+  test_BS <- 2*pnorm(abs(tabM$slp[1]-tabF$slp[1])/sqrt(tabM$se[1]^2 + tabF$se[1]^2),lower.tail = F)
+  test_AS <- 2*pnorm(abs(tabM$slp[2]-tabF$slp[2])/sqrt(tabM$se[2]^2 + tabF$se[2]^2),lower.tail = F)
+  
+  a <- data.frame("男_截点"=testM,"女_截点"=testF,"截点前-性别"=test_BS,"截点后-性别"=test_AS)
+  return(a)
+}
+
+tab <- test_segment("score",datalist$scoredata)
+tab <- apply(tab,2,function(x){
+  paste0(signif(x,2),gtools::stars.pval(x))
+})
+tab <- data.frame(t(tab))
+rownames(tab) <- "p值"
+
+kable(tab) %>% kable_styling(latex_options = "hold_position")
+```
+
+## Analysis on how health consciousness affects IC scores, diseases, death, ADL and IADL (adjusting age and gender)
+
+
+## score
+
+```{r}
+
+datalist$updatesample(datalist$BJ_data,"score.D")
+
+AddCov()
+
+levels(datalist$sample$Value) = c("Significant loss", "Moderate loss", "Sufficient","High")
+
+datalist$sample <-datalist$sample%>% mutate(A4_F=Age)%>%cut_by_list("A4_F", seq(30, 90, 10), 25, 90)%>%
+  mutate(AgeFactor=A4_F)%>% select(-A4_F)
+
+model <- MASS::polr(Value~D11_D+Age+Gender,data = datalist$sample)
+
+coef_list <- coef(summary(model))
+
+p<- pnorm(abs(coef(summary(model))[,"t value"]),lower.tail =F)*2
+p_star <- gtools::stars.pval(p)
+cbind(round(coef_list,3),p,p_star)
+
+```
+
+## ADL
+
+```{r}
+
+datalist$updatesample(datalist$BJ_data,"ADL.D")
+AddCov()
+
+levels(datalist$sample$Value) = c("Self-care", "Mild dependence", "Moderate dependence", "Severe dependence")
+#levels(datalist$sample$score.D) = c("Significant loss", "Moderate loss", "Sufficient","High")
+
+datalist$sample$score.D = as.numeric(datalist$sample$score.D)
+model <- MASS::polr(Value~D11_D+Age+Gender+score.D,data = datalist$sample)
+
+coef_list <- coef(summary(model))
+
+p<- pnorm(abs(coef(summary(model))[,"t value"]),lower.tail =F)*2
+p_star <- gtools::stars.pval(p)
+cbind(round(coef_list,3),p,p_star)
+
+```
+## IADL
+
+```{r,fig.height=4, fig.width=6, fig.show='hold',fig.align="center"}
+
+
+datalist$updatesample(datalist$BJ_data,"IADL.D")
+
+AddCov()
+
+levels(datalist$sample$Value) = c("Good", "Acceptable", "Reduced capacity", "Lack of capacity")
+
+datalist$sample$score.D = as.numeric(datalist$sample$score.D)
+model <- MASS::polr(Value~D11_D+Age+Gender+score.D,data = datalist$sample)
+
+coef_list <- coef(summary(model))
+
+p<- pnorm(abs(coef(summary(model))[,"t value"]),lower.tail =F)*2
+p_star <- gtools::stars.pval(p)
+cbind(round(coef_list,3),p,p_star)
+
+```
+
+
+## Death
+
+```{r}
+data <- readRDS("~/Rcode/data_sf.rds")
+
+
+data <- data %>% mutate(A4_F=Age)%>%cut_by_list("A4_F", seq(70, 90, 10), 60, 96)%>%
+  mutate(AgeFactor=A4_F)%>% select(-A4_F)
+
+data$Value = data$死亡
+
+data <- data %>% drop_na(Value,AgeFactor,D11_D)
+
+data$D11_D <- to_factor(data$D11_D)
+
+levels(data$D11_D) <- c("No","Yes")
+
+#levels(data$score.D) = c("Significant loss", "Moderate loss", "Sufficient","High")
+
+data$Value <- factor(data$Value)
+levels(data$Value) <- c("Alive","Dead")
+
+data$score.D = as.numeric(data$score.D)
+#a <- data %>% filter(score.D=="High")
+data <- data %>% drop_na(Value,Age,Gender,score.D)
+model <- glm(死亡~D11_D+Gender+Age+score.D,data=data)
+
+summary(model)
+```
+
+
+
+## Table 3 p value
+
+```{r}
+compare_prop_tab3 <- function(data,variable){
+  value1 <- data %>% filter(score.D4 == "Better") %>% pull(all_of(variable))
+  value2 <- data %>% filter(score.D4 == "Worse") %>% pull(all_of(variable))
+  res <- t.test(value1,value2,"two.sided")
+  p_value <- res$p.value
+  return(p_value)
+  }
+```
+
+```{r}
+data <- datalist$diseasedata%>%select(D1.1,D1.2,D1.3,D1.9,ID)
+data_tab <- left_join(data,datalist$BJ_data%>%select(ID,score.D, A2, A4),by="ID") %>% 
+  mutate(Gender = A2, Age = A4)
+data_tab <- data_tab %>% drop_na
+
+data_tab <- data_tab %>% mutate(Disease = D1.1+D1.2+D1.3+D1.9,
+                                Any = ifelse(Disease>=1,1,0),
+                                No = ifelse(Disease==0,1,0),
+                                Twomore = ifelse(Disease>=2,1,0))
+
+
+data <- datalist$BJ_data %>% drop_na(score.D)
+data <- data %>% mutate(score.D4 = ifelse(score.D==3 | score.D==4,"Better","Worse"))
+data <- left_join(data,data_tab,by="ID")
+
+data_select <- data %>% select(score.D4,ADL.D,IADL.D,Any,No,Twomore,M1.D, M5, M21, K5.A)
+
+data_select <- data_select %>% mutate(ADL_D1 = ifelse(ADL.D==1,1,0),
+                                      ADL_D2 = ifelse(ADL.D==2,1,0),
+                                      ADL_D3 = ifelse(ADL.D==3,1,0),
+                                      ADL_D4 = ifelse(ADL.D==4,1,0),
+                                      IADL_D1 = ifelse(IADL.D==1,1,0),
+                                      IADL_D2 = ifelse(IADL.D==2,1,0),
+                                      IADL_D3 = ifelse(IADL.D==3,1,0),
+                                      IADL_D4 = ifelse(IADL.D==4,1,0))
+
+compare_prop_tab3("ADL_D1")
+
+var_list <- c("ADL_D1","ADL_D2","ADL_D3","ADL_D4",
+              "IADL_D1","IADL_D2","IADL_D3","IADL_D4",
+              "Any","No","Twomore",
+              "M1.D", "M5", "M21", "K5.A")
+
+pvalue <- sapply(var_list,compare_prop_tab3,data=data_select)
+
+pvalue
+
+data_sf <- data_all %>% select(score.D,死亡) %>% drop_na
+
+data_sf <- data_sf %>% mutate(score.D4 = ifelse(score.D==3 | score.D==4,"Better","Worse"))
+
+pvalue_fin <- c(pvalue,compare_prop_tab3(data_sf,"死亡"))
+
+ifelse(pvalue_fin<0.0001,1,0)
+
+```
+
